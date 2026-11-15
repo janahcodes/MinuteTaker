@@ -1,0 +1,46 @@
+# Quick local run without Kubernetes:  docker compose up --build
+# Then open http://localhost:8080
+# "moto" emulates DynamoDB, S3 and SQS so nothing touches a real AWS account.
+x-aws: &aws
+  AWS_REGION: us-east-1
+  AWS_ACCESS_KEY_ID: local
+  AWS_SECRET_ACCESS_KEY: local
+  AWS_ENDPOINT_URL: http://moto:5000
+  TABLE_NAME: minutetaker-meetings
+  BUCKET_NAME: minutetaker-audio
+  QUEUE_URL: http://moto:5000/123456789012/minutetaker-jobs
+
+services:
+  moto:
+    image: motoserver/moto:5.0.26
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/moto-api/')"]
+      interval: 3s
+      retries: 20
+
+  init:
+    image: amazon/aws-cli:2.22.0
+    environment: *aws
+    entrypoint: ["/bin/sh", "/init.sh"]
+    volumes: ["./k8s/overlays/local/init-local-aws.sh:/init.sh:ro"]
+    depends_on: { moto: { condition: service_healthy } }
+
+  api:
+    build: services/api
+    image: minutetaker-api:dev
+    environment: *aws
+    depends_on: { init: { condition: service_completed_successfully } }
+
+  worker:
+    build: services/worker
+    image: minutetaker-worker:dev
+    environment:
+      <<: *aws
+      VISIBILITY_TIMEOUT: "120"
+    depends_on: { init: { condition: service_completed_successfully } }
+
+  web:
+    build: services/web
+    image: minutetaker-web:dev
+    ports: ["8080:8080"]
+    depends_on: [api]
