@@ -1,0 +1,54 @@
+# Stand-in for the managed AWS services when running locally.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: moto
+  labels: { app: moto }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: moto } }
+  template:
+    metadata: { labels: { app: moto } }
+    spec:
+      containers:
+        - name: moto
+          image: motoserver/moto:5.0.26
+          ports: [{ name: http, containerPort: 5000 }]
+          readinessProbe:
+            httpGet: { path: /moto-api/, port: http }
+            periodSeconds: 3
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { memory: 1Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: moto
+spec:
+  selector: { app: moto }
+  ports: [{ name: http, port: 5000, targetPort: http }]
+---
+# Creates the table, bucket and queues. Re-run it (delete + apply) if the
+# moto pod restarts, since moto keeps everything in memory.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: init-local-aws
+spec:
+  backoffLimit: 10
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: init
+          image: amazon/aws-cli:2.22.0
+          command: ["/bin/sh", "/init/init-local-aws.sh"]
+          envFrom:
+            - configMapRef: { name: minutetaker-config }
+            - secretRef: { name: local-aws-creds }
+          volumeMounts: [{ name: init, mountPath: /init }]
+      volumes:
+        - name: init
+          configMap: { name: init-local-aws }

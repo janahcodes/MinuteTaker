@@ -1,0 +1,11 @@
+# Three-node local cluster: one control plane + two workers, so pod spreading,
+# node drains and node failure can be demonstrated. http://localhost:8080 -> web.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: minutetaker
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - { containerPort: 30080, hostPort: 8080, protocol: TCP }
+  - role: worker
+  - role: worker

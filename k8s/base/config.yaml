@@ -1,0 +1,12 @@
+# Names of the managed resources. Overlays replace these values
+# (local emulator vs. real AWS). No secrets live here: on AWS the pods get
+# credentials from their ServiceAccount's IAM role, not from keys.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: minutetaker-config
+data:
+  AWS_REGION: us-east-1
+  TABLE_NAME: minutetaker-meetings
+  BUCKET_NAME: minutetaker-audio
+  QUEUE_URL: "set-by-overlay"

@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: minutetaker
+labels:
+  - pairs: { app.kubernetes.io/part-of: minutetaker }
+    includeSelectors: false
+resources:
+  - namespace.yaml
+  - config.yaml
+  - api.yaml
+  - worker.yaml
+  - web.yaml
+images:
+  - { name: minutetaker-api, newTag: dev }
+  - { name: minutetaker-worker, newTag: dev }
+  - { name: minutetaker-web, newTag: dev }

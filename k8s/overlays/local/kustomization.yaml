@@ -1,0 +1,45 @@
+# Local cluster (kind). DynamoDB, S3 and SQS are emulated by moto inside the
+# cluster; on AWS they are the real managed services.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: minutetaker
+resources:
+  - ../../base
+  - moto.yaml
+configMapGenerator:
+  - name: init-local-aws
+    files: [init-local-aws.sh]
+secretGenerator:
+  # Dummy keys: moto accepts anything. Real AWS uses IAM roles, not keys.
+  - name: local-aws-creds
+    literals: [AWS_ACCESS_KEY_ID=local, AWS_SECRET_ACCESS_KEY=local]
+patches:
+  - target: { kind: ConfigMap, name: minutetaker-config }
+    patch: |-
+      - op: add
+        path: /data/AWS_ENDPOINT_URL
+        value: http://moto.minutetaker.svc.cluster.local:5000
+      - op: replace
+        path: /data/QUEUE_URL
+        value: http://moto.minutetaker.svc.cluster.local:5000/123456789012/minutetaker-jobs
+  - target: { kind: Deployment, name: "api|worker" }
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/envFrom/-
+        value: { secretRef: { name: local-aws-creds } }
+      - op: add
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: IfNotPresent
+  - target: { kind: Deployment, name: web }
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: IfNotPresent
+  - target: { kind: Service, name: web }
+    patch: |-
+      - op: replace
+        path: /spec/type
+        value: NodePort
+      - op: add
+        path: /spec/ports/0/nodePort
+        value: 30080
