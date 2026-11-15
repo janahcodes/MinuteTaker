@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MinuteTaker</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23215bd6'/><path d='M9 20v-8m5 11V9m5 13V10m5 8v-4' stroke='white' stroke-width='2.6' stroke-linecap='round'/></svg>">
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --ink: #14171f; --muted: #5d6573; --line: #e3e6eb;
+  --accent: #215bd6; --accent-ink: #ffffff; --ok: #137a43; --warn: #a45c00; --bad: #b42318;
+  --chip: #eef2fb; --hl: #fff2b3; --radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1115; --panel: #171a21; --ink: #e8eaee; --muted: #9aa3b2; --line: #2a2f3a;
+    --accent: #6b9bff; --accent-ink: #0b1020; --ok: #46c98a; --warn: #f0a94b; --bad: #ff7b6e;
+    --chip: #1f2531; --hl: #5a4a00;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif; }
+header { display: flex; align-items: center; gap: 12px; padding: 14px 24px;
+  border-bottom: 1px solid var(--line); background: var(--panel); }
+header h1 { font-size: 18px; margin: 0; letter-spacing: -0.01em; }
+header .tag { color: var(--muted); font-size: 13px; }
+header form { margin-left: auto; display: flex; gap: 6px; }
+input[type=search], input[type=text] { font: inherit; color: inherit; background: var(--bg);
+  border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; min-width: 0; }
+input[type=search] { width: 260px; }
+button { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  border-radius: 8px; padding: 7px 12px; cursor: pointer; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button:disabled { opacity: .55; cursor: default; }
+main { display: grid; grid-template-columns: 340px 1fr; gap: 20px; padding: 20px 24px;
+  max-width: 1200px; margin: 0 auto; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+.drop { padding: 18px; display: grid; gap: 10px; }
+.drop .zone { border: 2px dashed var(--line); border-radius: 8px; padding: 18px; text-align: center;
+  color: var(--muted); cursor: pointer; }
+.drop .zone.over { border-color: var(--accent); color: var(--accent); }
+.row { display: flex; gap: 8px; align-items: center; }
+.row > * { flex: 1; }
+#rec.live { background: var(--bad); color: #fff; border-color: var(--bad); }
+.msg { font-size: 13px; color: var(--muted); min-height: 1.2em; }
+.msg.err { color: var(--bad); }
+.list { margin-top: 16px; }
+.list h2, .detail h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--muted); margin: 0; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.item { padding: 11px 16px; border-bottom: 1px solid var(--line); cursor: pointer; display: grid; gap: 2px; }
+.item:last-child { border-bottom: 0; }
+.item:hover, .item.sel { background: var(--chip); }
+.item .t { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item .m { font-size: 12.5px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+.badge { font-size: 11.5px; font-weight: 600; padding: 1px 7px; border-radius: 99px; background: var(--chip); }
+.s-DONE { color: var(--ok); } .s-FAILED { color: var(--bad); }
+.s-QUEUED, .s-UPLOADED, .s-UPLOADING, .s-PROCESSING { color: var(--warn); }
+.s-PROCESSING::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 5px;
+  border-radius: 50%; background: currentColor; animation: pulse 1s infinite alternate; }
+@keyframes pulse { from { opacity: .25 } to { opacity: 1 } }
+.empty { padding: 28px 16px; color: var(--muted); text-align: center; }
+.detail { min-height: 420px; }
+.detail .body { padding: 18px 20px 24px; }
+.detail h3 { margin: 0 0 4px; font-size: 22px; letter-spacing: -0.01em; }
+.facts { color: var(--muted); font-size: 13px; display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 18px; }
+.section { margin-top: 22px; }
+.section > h4 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.actions { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.actions li { display: grid; grid-template-columns: auto 1fr; gap: 10px; padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: 8px; }
+.actions li.done .txt { text-decoration: line-through; color: var(--muted); }
+.actions .meta { font-size: 12.5px; color: var(--muted); display: flex; gap: 10px; margin-top: 2px; }
+.seg { display: grid; grid-template-columns: 54px 1fr; gap: 10px; padding: 3px 0; }
+.seg time { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 13px; padding-top: 1px; }
+mark { background: var(--hl); color: inherit; border-radius: 3px; padding: 0 2px; }
+.toolbar { display: flex; gap: 8px; margin-top: 10px; }
+footer { text-align: center; color: var(--muted); font-size: 12.5px; padding: 10px 0 24px; }
+footer code { background: var(--chip); padding: 1px 6px; border-radius: 5px; }
+@media (max-width: 820px) {
+  main { grid-template-columns: 1fr; padding: 16px; }
+  header { flex-wrap: wrap; padding: 12px 16px; }
+  header form { margin-left: 0; width: 100%; }
+  input[type=search] { width: 100%; flex: 1; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>MinuteTaker</h1>
+  <span class="tag">Meeting recordings → transcripts & action items</span>
+  <form id="search-form" role="search">
+    <input id="q" type="search" placeholder="Search all transcripts…" aria-label="Search transcripts">
+    <button type="submit">Search</button>
+  </form>
+</header>
+
+<main>
+  <div>
+    <section class="panel drop" aria-label="Add a recording">
+      <input id="title" type="text" placeholder="Meeting title (optional)" maxlength="200">
+      <label class="zone" id="zone">
+        <input id="file" type="file" accept="audio/*,video/mp4,video/webm" hidden>
+        <strong>Drop a recording</strong> or click to choose<br>
+        <small>mp3, m4a, wav, webm, ogg · up to 50 MB · 45 min</small>
+      </label>
+      <div class="row">
+        <button id="rec" type="button">● Record from mic</button>
+      </div>
+      <div id="upload-msg" class="msg" role="status"></div>
+    </section>
+
+    <section class="panel list" aria-label="Meetings">
+      <h2 id="list-title">Meetings</h2>
+      <div id="list"><div class="empty">Loading…</div></div>
+    </section>
+  </div>
+
+  <section class="panel detail" aria-live="polite">
+    <h2>Details</h2>
+    <div class="body" id="detail"><div class="empty">Choose a meeting, or upload one to get started.</div></div>
+  </section>
+</main>
+
+<footer id="footer">&nbsp;</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
