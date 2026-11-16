@@ -172,7 +172,7 @@ that has side effects.
 
 | Failure | Effect | Mitigation |
 |---|---|---|
-| DynamoDB regional outage / throttling | API reads and writes return 503; workers back off and retry | Pay-per-request mode (no capacity to exhaust at our scale); point-in-time recovery enabled on AWS |
+| DynamoDB regional outage / throttling | API reads and writes return 503; workers back off and retry | Pay-per-request mode (no capacity to exhaust at our scale); point-in-time recovery enabled in the Terraform (`infra/data.tf`) |
 | S3 unavailable | Uploads fail with 503; workers retry with backoff | S3's 11-nines durability: once stored, audio isn't lost |
 | SQS unavailable | New uploads stay `UPLOADED` (recoverable with `/retry`); workers log and back off for 5 s | Messages already queued are kept durably |
 | Local only: moto pod restarts | Emulator data is in memory and is lost | Local development only; the real services are durable |
@@ -188,9 +188,102 @@ that has side effects.
 
 ## 6. Results
 
-*Filled in from the local run; see §6.1 to reproduce.*
+All results below come from the system running on a local 3-node Kubernetes
+cluster (kind: 1 control plane + 2 workers, on an Apple-silicon Mac).
+DynamoDB, S3 and SQS were emulated with moto, because my AWS account was blocked
+(see §6.6).
 
-### 6.1 How to reproduce
+### 6.1 End-to-end transcription
+A 25.7-second test recording of a staged stand-up meeting was transcribed in
+**4.5 s** by one worker (about 5.7× faster than real time on one CPU core). The
+transcript was word-for-word correct. All five spoken tasks were found as action
+items, with the owner and due date where they were said:
+
+| Action item | Owner | Due |
+|---|---|---|
+| Sarah, can you send the revised proposal to the client by Friday? | Sarah | by Friday |
+| I'll also update the budget sheet before the review. | Speaker | – |
+| We need to finalize the hiring plan before next Monday. | – | before next Monday |
+| Mike will set up the staging environment tomorrow. | Mike | tomorrow |
+| Let's make sure the contract is signed by end of week. | – | by end of week |
+
+(The "Mike will…" item was missed on the first run. I fixed the rule and added a
+regression test.)
+
+### 6.2 Horizontal scaling under load
+`scripts/loadtest.sh 30` uploaded 30 recordings at once. The upload API
+answered `201` to all 30 immediately; the jobs waited in SQS.
+
+| Time after load | Event (from `kubectl describe hpa worker`) |
+|---|---|
+| ~15 s | worker CPU above 60 % target → **1 → 2** pods |
+| ~30 s | → **3** pods |
+| ~45 s | → **4** pods |
+| ~60 s | → **5** pods (max), spread across both worker nodes |
+| ~85 s | queue empty: 31/31 meetings `DONE`, 0 failures |
+| ~4 min | first scale-in (5 → 4) after the 180 s stabilization window |
+
+The scale-up rate (2 pods per 30 s) and the delayed scale-down behaved exactly as
+configured. API and web stayed at their 2-replica minimum the whole time
+(API CPU ~18 %). This is the point of splitting the services: the heavy tier
+scaled and the light tiers didn't have to.
+
+### 6.3 Failure injection: worker killed mid-job
+I uploaded a 111-second recording, waited until a worker had claimed it, and
+force-deleted that pod (`kubectl delete pod --grace-period=0 --force`, which
+behaves like a crash).
+
+* The job was **not lost**. The dead pod never deleted the SQS message, so the
+  message became visible again when the 120 s visibility timeout ran out.
+* A **different** worker picked it up and finished it (`attempts = 2`). The
+  meeting went `PROCESSING → DONE` with no manual step.
+* The cost was latency: about 3 min 45 s end-to-end instead of about 1 min 50 s.
+  A shorter visibility timeout would recover faster, but would risk duplicate
+  work when a heartbeat is late. 120 s with a 60 s heartbeat is the trade-off I chose.
+
+### 6.4 Failure injection: datastore unreachable (tests)
+`test_dependency_outage_returns_503` deletes the DynamoDB table under a running
+API. The API returns `503` with a friendly message, `/readyz` fails, and
+`/healthz` stays `200`, so Kubernetes would stop routing to the pod without
+restarting it. `test_run_loop_survives_unreachable_aws` checks that the worker
+backs off instead of crashing when AWS cannot be reached.
+
+### 6.5 What did not work the first time (found by running it)
+These were all real bugs, found by deploying and testing, and fixed:
+
+1. **`segments` is a DynamoDB reserved word.** Saving results failed until I
+   aliased it with `ExpressionAttributeNames` (caught by a unit test).
+2. **The regex `we'?ll` matched the word "well"**, producing false action items.
+   The apostrophe is now required.
+3. **The moto pod crash-looped in Kubernetes.** Kubernetes injects a
+   `MOTO_PORT=tcp://10.96…:5000` environment variable into every pod for the
+   Service named `moto`, and moto reads `MOTO_PORT` as its own port setting.
+   I fixed it with `enableServiceLinks: false`. It's a good example of a
+   platform behaviour that never appears in Docker Compose.
+4. **The worker crashed when the queue was unreachable** instead of backing
+   off. Connection errors raise `BotoCoreError`, not `ClientError`. This was
+   exactly the failure mode §5.3 claimed to handle, so I fixed it and added a test.
+5. **Dependency drift broke transcription.** `faster-whisper` calls
+   `av.open(metadata_errors=…)`, which PyAV 19 removed, so every file failed
+   with "Could not decode audio". I pinned `av==18.1.0`. The worker classed this as a
+   *permanent* error (bad input), which was the wrong call: it was a code bug,
+   and those jobs had to be retried by hand once the fix was deployed. A
+   stricter split between "the file is bad" and "our decoder is broken" would
+   be better.
+6. **The Docker image build needed `requests`**, which newer `huggingface_hub`
+   no longer installs. I pinned it explicitly.
+
+### 6.6 Deployment target and the AWS block
+The plan was AWS EKS with images in ECR and real DynamoDB, S3 and SQS.
+When I started, a Service Control Policy on my AWS Organization denied EKS,
+ECS, ECR, DynamoDB, SQS, EC2 and IAM in the member account, while S3 was allowed.
+`infra/` contains Terraform for the managed data services, the ECR
+repositories and a least-privilege IAM identity, validated with
+`terraform validate`. It is ready to apply once the policy allows those
+services. The application code needs no changes for that: only the overlay's
+configuration (endpoint, names, credentials) changes.
+
+### 6.7 How to reproduce
 ```bash
 scripts/local-up.sh                 # build, create 3-node kind cluster, deploy
 scripts/loadtest.sh 20              # 20 uploads → backlog

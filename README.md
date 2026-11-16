@@ -23,6 +23,7 @@ services/worker   SQS consumer, Whisper transcription, action items + tests
 services/web      nginx config + single-page UI
 k8s/base          Deployments, Services, probes, HPAs, PDBs
 k8s/overlays/     local = kind cluster + moto emulating DynamoDB/S3/SQS
+infra/            Terraform: DynamoDB, S3, SQS (+DLQ), ECR, least-privilege IAM
 scripts/          local-up / local-down / loadtest / make-sample
 docs/report.md    design, health checks, scaling, failure modes, results
 ```
