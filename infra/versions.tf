@@ -12,7 +12,7 @@ provider "aws" {
 
 variable "region" {
   type    = string
-  default = "us-east-1"
+  default = "us-east-2" # the project is region-locked to Ohio
 }
 
 variable "name" {

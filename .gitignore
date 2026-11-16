@@ -8,3 +8,6 @@ infra/*.tfstate
 infra/*.tfstate.*
 infra/terraform.tfvars
 .DS_Store
+infra/tfplan
+k8s/overlays/aws/aws-config.yaml
+k8s/overlays/aws/creds.env
