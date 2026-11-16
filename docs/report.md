@@ -14,6 +14,28 @@ such as agencies, clinics and consultancies. The transcription runs on our own
 containers instead of a paid speech API, so recordings never leave the
 deployment. For those clients that is a privacy selling point.
 
+Features:
+
+* **Meeting or lecture mode.** Meetings open on their action items. Lectures
+  open on the transcript and get a **Turn into notes** button, which downloads a
+  formatted notes page: summary, key terms, definitions and condensed points per
+  section, with timestamps. The notes are selected and condensed, not word for
+  word (`services/api/app/notes.py`).
+* **Deadlines go on the calendar.** The worker turns "by Friday", "tomorrow",
+  "end of week" or "Nov 20" into a real date, relative to the day of the
+  recording, plus a short task title ("Send the revised proposal to the
+  client"). Each deadline has an **Add to calendar + reminder** button. It
+  downloads an `.ics` event with reminders at 9 AM the day before and 9 AM on
+  the day, which works with Apple Calendar, Outlook and Google. There is also a
+  **Google Calendar** link and an **Add all deadlines** button.
+* **Recording calls.** **Record a call** captures the audio of a Google Meet,
+  Teams or Zoom-web tab (Chrome's "Share tab audio") mixed with the user's
+  microphone. It is transcribed when the call ends. A bot that joins meetings by
+  itself would need each platform's meeting SDK and app approval, so it is
+  out of scope.
+* **Search as you type.** Results drop down directly under the search bar,
+  and opening one highlights the match in the transcript.
+
 ## 2. Architecture
 
 ```
@@ -272,6 +294,30 @@ These were all real bugs, found by deploying and testing, and fixed:
    be better.
 6. **The Docker image build needed `requests`**, which newer `huggingface_hub`
    no longer installs. I pinned it explicitly.
+7. **A real cascading failure in the API tier.** Redeploying all three services
+   at once while a worker was transcribing pushed the cluster to ~250 % CPU.
+   Each API pod ran **two uvicorn processes under a 0.5 CPU limit**. When the
+   pods were slow, uvicorn's supervisor killed and restarted its own child
+   processes, and the 1 s default liveness timeout made the kubelet restart
+   whole pods. Restarting Python is CPU-heavy, so the pods never caught up.
+   Meanwhile the HPA read the high CPU as load and scaled the API to its max
+   of 6, adding even more startup work. **0 of 6 API pods were Ready** and the
+   site returned errors until I fixed it:
+   * one uvicorn process per pod (Kubernetes already does the scaling);
+   * a 5 s timeout on the liveness probes.
+   After redeploying, 6/6 pods were Ready within a minute.
+
+   Lessons: (a) don't stack a second process supervisor inside a
+   CPU-limited pod; (b) a liveness probe must tolerate a slow-but-healthy
+   process, or it turns overload into an outage; (c) CPU-based autoscaling
+   can amplify a startup storm, which is another reason to scale on queue depth
+   or request rate (§7).
+8. **`kind load` can fail silently under load.** After a fix, the workers
+   kept running the old image because loading the image into the nodes had
+   failed while the cluster was saturated. I only caught it because the output
+   didn't change, and confirmed it by comparing image IDs on the nodes. The fix
+   is to tag every build uniquely (a git SHA) instead of reusing `:dev`, so a
+   stale image can't pass for a new one. Project 3's pipeline should do this.
 
 ### 6.6 Deployment target and the AWS block
 The plan was AWS EKS with images in ECR and real DynamoDB, S3 and SQS.
