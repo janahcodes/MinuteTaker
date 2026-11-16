@@ -51,6 +51,7 @@ spec:
           livenessProbe:         # fails if the poll loop hasn't ticked in STALL_AFTER_S
             httpGet: { path: /healthz, port: health }
             periodSeconds: 15
+            timeoutSeconds: 5
             failureThreshold: 3
           readinessProbe:        # model loaded and loop alive
             httpGet: { path: /readyz, port: health }
