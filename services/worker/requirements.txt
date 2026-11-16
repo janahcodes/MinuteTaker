@@ -1,2 +1,6 @@
 boto3==1.35.90
-faster-whisper==1.1.1
+faster-whisper==1.2.1
+# faster-whisper calls av.open(metadata_errors=...), which PyAV 19 removed
+av==18.1.0
+# faster-whisper imports requests, but newer huggingface_hub no longer pulls it in
+requests==2.32.3
