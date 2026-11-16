@@ -4,7 +4,7 @@ const $ = (id) => document.getElementById(id);
 const PENDING = new Set(["UPLOADING", "UPLOADED", "QUEUED", "PROCESSING"]);
 const LABEL = { UPLOADING: "Uploading", UPLOADED: "Uploaded", QUEUED: "Queued",
   PROCESSING: "Transcribing", DONE: "Ready", FAILED: "Failed" };
-const AVATAR_COLORS = ["#d98ba3", "#c79a86", "#a98bb8", "#e2a6a0", "#b5868f", "#c7a37b", "#9c8fb0", "#e6b3c4"];
+const AVATAR_COLORS = ["#5b8def", "#7aa7f5", "#4a6fb8", "#6c95e0", "#8fa8d6", "#3f6fd8", "#7f93c4", "#5a7bd0"];
 
 const state = { selected: null, query: "", filter: "all", tab: "actions", meetings: [], current: null };
 let pollTimer = null;
