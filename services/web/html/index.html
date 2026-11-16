@@ -371,17 +371,17 @@ mark { background: var(--hl); color: inherit; border-radius: 4px; padding: 0 2px
     </div>
 
     <label class="ticket glass" id="zone">
-      <input id="file" type="file" accept="audio/*,video/mp4,video/webm" hidden>
+      <input id="file" type="file" accept="audio/*,video/*" hidden>
       <div class="portal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 16V4m0 0-4 4m4-4 4 4"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg></div>
       <span class="label">destination</span>
       <span class="big">Transcript</span>
-      <small>Drop a recording anywhere on this card<br>mp3 · m4a · wav · webm · ogg</small>
+      <small>Drop a recording anywhere on this card<br>audio or video: mp3 · m4a · wav · mp4 · mov · webm</small>
       <div class="row">
         <span class="btn dark" id="choose">Choose file</span>
         <button class="btn rec" id="rec" type="button"><span class="wave"><i></i><i></i><i></i><i></i></span><span id="rec-label">● Record mic</span></button>
         <button class="btn rec" id="rec-call" type="button" title="Record a Zoom, Google Meet or Teams call running in a browser tab"><span class="wave"><i></i><i></i><i></i><i></i></span><span id="call-label">◉ Record a call</span></button>
       </div>
-      <span class="fine">Up to 50 MB · 45 minutes</span>
+      <span class="fine">Up to 200 MB · 90 minutes</span>
       <span class="callhint">“Record a call” captures a Meet, Teams or Zoom-web tab plus your mic. Tick “Share tab audio” when Chrome asks.</span>
     </label>
   </section>

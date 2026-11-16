@@ -3,7 +3,7 @@
 FROM nginxinc/nginx-unprivileged:1.27-alpine
 
 ENV API_UPSTREAM=http://api:8000 \
-    MAX_UPLOAD_MB=50 \
+    MAX_UPLOAD_MB=200 \
     NGINX_ENVSUBST_FILTER="^(API_UPSTREAM|MAX_UPLOAD_MB)$"
 
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template

@@ -23,11 +23,11 @@ from .store import Settings, Store
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("api")
 
-MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_MB", "50")) * 1024 * 1024
+MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_MB", "200")) * 1024 * 1024
 ALLOWED_TYPES = {
     "audio/mpeg", "audio/mp3", "audio/mp4", "audio/x-m4a", "audio/m4a", "audio/wav",
     "audio/x-wav", "audio/wave", "audio/webm", "audio/ogg", "audio/flac", "video/mp4",
-    "video/webm", "audio/aac",
+    "video/webm", "audio/aac", "video/quicktime", "video/x-matroska", "audio/x-aac", "audio/opus",
 }
 HOSTNAME = socket.gethostname()
 

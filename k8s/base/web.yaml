@@ -27,7 +27,7 @@ spec:
           ports: [{ name: http, containerPort: 8080 }]
           env:
             - { name: API_UPSTREAM, value: "http://api.minutetaker.svc.cluster.local:8000" }
-            - { name: MAX_UPLOAD_MB, value: "50" }
+            - { name: MAX_UPLOAD_MB, value: "200" }
           resources:
             requests: { cpu: 50m, memory: 32Mi }
             limits: { cpu: 300m, memory: 128Mi }

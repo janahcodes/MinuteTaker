@@ -33,6 +33,8 @@ spec:
           ports: [{ name: http, containerPort: 8000 }]
           envFrom:
             - configMapRef: { name: minutetaker-config }
+          env:
+            - { name: MAX_UPLOAD_MB, value: "200" }
           resources:
             requests: { cpu: 100m, memory: 160Mi }
             limits: { cpu: 500m, memory: 320Mi }
@@ -60,7 +62,7 @@ spec:
             - { name: tmp, mountPath: /tmp }   # FastAPI spools large uploads to /tmp
       volumes:
         - name: tmp
-          emptyDir: { sizeLimit: 512Mi }
+          emptyDir: { sizeLimit: 1Gi }
 ---
 apiVersion: v1
 kind: Service

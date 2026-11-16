@@ -39,6 +39,7 @@ spec:
             - { name: MAX_RECEIVES, value: "3" }
             - { name: CPU_THREADS, value: "1" }
             - { name: STALL_AFTER_S, value: "300" }
+            - { name: MAX_AUDIO_MINUTES, value: "90" }   # full lectures
           # Transcription is CPU-bound: one core per job. The HPA scales on
           # CPU, so a busy worker (~100% of its limit) triggers a scale-out.
           resources:
