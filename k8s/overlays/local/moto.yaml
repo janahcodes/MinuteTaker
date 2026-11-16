@@ -21,8 +21,28 @@ spec:
             httpGet: { path: /moto-api/, port: http }
             periodSeconds: 3
           resources:
-            requests: { cpu: 100m, memory: 256Mi }
-            limits: { memory: 1Gi }
+            # moto keeps every uploaded recording in RAM. A 1Gi limit got it
+            # OOMKilled after ~40 uploads, which wiped all emulated resources.
+            requests: { cpu: 100m, memory: 512Mi }
+            limits: { memory: 3Gi }
+        # Self-healing: moto loses everything when it restarts, and the API then
+        # fails readiness on every pod (site-wide 502). This sidecar re-creates
+        # the table, bucket and queues within ~15 s of any moto restart.
+        - name: ensure-resources
+          image: amazon/aws-cli:2.22.0
+          command: ["/bin/sh", "-c", "while true; do sh /init/init-local-aws.sh >/dev/null 2>&1 || echo 'init failed, retrying'; sleep 15; done"]
+          envFrom:
+            - configMapRef: { name: minutetaker-config }
+            - secretRef: { name: local-aws-creds }
+          env:
+            - { name: AWS_ENDPOINT_URL, value: "http://localhost:5000" }
+          volumeMounts: [{ name: init, mountPath: /init }]
+          resources:
+            requests: { cpu: 10m, memory: 64Mi }
+            limits: { memory: 256Mi }
+      volumes:
+        - name: init
+          configMap: { name: init-local-aws }
 ---
 apiVersion: v1
 kind: Service
