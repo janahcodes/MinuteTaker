@@ -32,7 +32,7 @@ from typing import Callable, Protocol
 import boto3
 from boto3.dynamodb.conditions import Attr
 from botocore.config import Config
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
 from .actions import extract_action_items
 
@@ -139,8 +139,9 @@ class Worker:
             self.health.beat()
             try:
                 self.poll_once()
-            except ClientError as exc:
-                # SQS/DynamoDB hiccup: back off, don't crash the pod.
+            except (ClientError, BotoCoreError) as exc:
+                # SQS/DynamoDB unreachable or erroring: back off, don't crash
+                # the pod (a restart can't fix a downstream outage).
                 log.error("AWS error in poll loop: %s", exc)
                 self.stopping.wait(5)
         log.info("worker %s stopped cleanly", HOSTNAME)
