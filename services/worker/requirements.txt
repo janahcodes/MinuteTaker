@@ -4,3 +4,5 @@ faster-whisper==1.2.1
 av==18.1.0
 # faster-whisper imports requests, but newer huggingface_hub no longer pulls it in
 requests==2.32.3
+# IANA time zones for zoneinfo (slim images may lack /usr/share/zoneinfo)
+tzdata==2025.2

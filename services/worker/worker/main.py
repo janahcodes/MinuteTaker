@@ -25,7 +25,9 @@ import socket
 import tempfile
 import threading
 import time
+from datetime import datetime
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Callable, Protocol
 
@@ -41,6 +43,8 @@ log = logging.getLogger("worker")
 
 HOSTNAME = socket.gethostname()
 MAX_DDB_ITEM_BYTES = 350_000  # DynamoDB's hard limit is 400 KB per item
+# Deadlines like "by Friday" are resolved in the users' time zone.
+LOCAL_TZ = ZoneInfo(os.environ.get("TZ_NAME", "America/New_York"))
 
 
 class PermanentError(Exception):
@@ -227,7 +231,8 @@ class Worker:
             segments, duration = self.transcriber.transcribe(tmp.name, self.health.beat)
 
         transcript = " ".join(s["text"] for s in segments).strip()
-        actions = extract_action_items(segments)
+        meeting_day = datetime.fromtimestamp(int(meeting.get("created_at") or time.time()), LOCAL_TZ).date()
+        actions = extract_action_items(segments, ref=meeting_day)
         return {
             "transcript": transcript,
             "segments": [

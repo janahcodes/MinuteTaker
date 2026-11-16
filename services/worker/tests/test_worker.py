@@ -212,3 +212,62 @@ def test_named_owner_with_will():
     items = extract_action_items(segs)
     assert len(items) == 1
     assert items[0]["owner"] == "Mike" and items[0]["due"].lower() == "tomorrow"
+
+
+# ---- deadlines -> dates, task titles -----------------------------------
+from datetime import date as _date
+
+from worker.actions import resolve_due, task_title
+
+WED = _date(2026, 11, 11)  # a Wednesday
+
+
+@pytest.mark.parametrize("phrase,expected", [
+    ("by Friday", _date(2026, 11, 13)),
+    ("before next Monday", _date(2026, 11, 16)),
+    ("by next Friday", _date(2026, 11, 20)),
+    ("tomorrow", _date(2026, 11, 12)),
+    ("by end of week", _date(2026, 11, 13)),
+    ("by the end of the month", _date(2026, 11, 30)),
+    ("next week", _date(2026, 11, 16)),
+    ("by Nov 20th", _date(2026, 11, 20)),
+    ("by 3rd of January", _date(2027, 1, 3)),
+    ("by 3 pm", WED),
+    ("whenever", None),
+])
+def test_resolve_due(phrase, expected):
+    assert resolve_due(phrase, WED) == expected
+
+
+def test_friday_said_on_friday_means_next_friday():
+    assert resolve_due("by Friday", _date(2026, 11, 13)) == _date(2026, 11, 20)
+
+
+@pytest.mark.parametrize("sentence,due,expected", [
+    ("Sarah, can you send the revised proposal to the client by Friday?", "by Friday", "Send the revised proposal to the client"),
+    ("I'll also update the budget sheet before the review.", None, "Update the budget sheet before the review"),
+    ("We need to finalize the hiring plan before next Monday.", "before next Monday", "Finalize the hiring plan"),
+    ("Mike will set up the staging environment tomorrow.", "tomorrow", "Set up the staging environment"),
+    ("Let's make sure the contract is signed by end of week.", "by end of week", "Make sure the contract is signed"),
+])
+def test_task_title(sentence, due, expected):
+    assert task_title(sentence, due) == expected
+
+
+def test_items_carry_due_date_and_task():
+    items = extract_action_items(SEGMENTS, ref=WED)
+    assert items[0]["task"] == "Send the revised proposal to the client"
+    assert items[0]["due_date"] == "2026-11-13"
+    assert items[1]["due_date"] is None
+
+
+def test_lecture_filler_is_not_an_owner_or_task():
+    segs = [
+        {"start": 0, "end": 5, "text": "Now, you know, in practice network partitions always happen, so the real choice is consistency versus availability."},
+        {"start": 5, "end": 9, "text": "Basically, DynamoDB chooses availability by default."},
+        {"start": 9, "end": 13, "text": "For homework, please read chapter four on replication by next Wednesday."},
+        {"start": 13, "end": 16, "text": "Also, the lab report is due by Friday."},
+    ]
+    items = extract_action_items(segs, ref=WED)
+    assert [i["task"] for i in items] == ["Read chapter four on replication", "The lab report"]
+    assert [i["due_date"] for i in items] == ["2026-11-18", "2026-11-13"]
