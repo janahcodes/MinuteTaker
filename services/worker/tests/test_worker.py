@@ -271,3 +271,17 @@ def test_lecture_filler_is_not_an_owner_or_task():
     items = extract_action_items(segs, ref=WED)
     assert [i["task"] for i in items] == ["Read chapter four on replication", "The lab report"]
     assert [i["due_date"] for i in items] == ["2026-11-18", "2026-11-13"]
+
+
+def test_meeting_deleted_mid_transcription_is_not_resurrected(aws):
+    s3, sqs, table = aws
+    mid = add_meeting(s3, sqs, table)
+
+    class DeletingTranscriber(FakeTranscriber):
+        def transcribe(self, path, on_progress):
+            table.delete_item(Key={"id": mid})  # user hits Delete while we work
+            return super().transcribe(path, on_progress)
+
+    Worker(DeletingTranscriber()).poll_once(wait=0)
+    assert "Item" not in table.get_item(Key={"id": mid})
+    assert queue_empty(sqs)

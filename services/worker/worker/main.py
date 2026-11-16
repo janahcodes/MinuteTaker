@@ -196,7 +196,12 @@ class Worker:
             stop_heartbeat()
 
         result["processing_s"] = Decimal(str(round(time.monotonic() - t0, 2)))
-        self.save(meeting_id, result)
+        try:
+            self.save(meeting_id, result)
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] != "ConditionalCheckFailedException":
+                raise
+            log.info("job %s was deleted while transcribing; result discarded", meeting_id)
         self.ack(receipt)
         log.info("job %s done in %.1fs, %d action items", meeting_id,
                  float(result["processing_s"]), len(result["action_items"]))
@@ -256,6 +261,8 @@ class Worker:
                 "action_items = :a, action_count = :ac, duration_s = :dur, processing_s = :ps, "
                 "finished_at = :f REMOVE #e"
             ),
+            # Never resurrect a meeting the user deleted mid-transcription.
+            ConditionExpression=Attr("id").exists(),
             # status, error, segments and transcript collide with DynamoDB reserved words
             ExpressionAttributeNames={"#s": "status", "#e": "error", "#seg": "segments", "#tr": "transcript"},
             ExpressionAttributeValues={
