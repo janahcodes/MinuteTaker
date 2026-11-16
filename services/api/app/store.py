@@ -25,7 +25,7 @@ _BOTO_CONFIG = Config(
 )
 
 # Fields returned by the list endpoint (the transcript can be large).
-SUMMARY_FIELDS = ["id", "title", "status", "created_at", "duration_s", "action_count", "error"]
+SUMMARY_FIELDS = ["id", "title", "kind", "status", "created_at", "duration_s", "action_count", "error"]
 
 
 @dataclass
@@ -54,11 +54,12 @@ class Store:
         self.sqs = session.client("sqs", config=_BOTO_CONFIG)
 
     # ---- meetings (DynamoDB) -------------------------------------------
-    def create_meeting(self, meeting_id: str, title: str, s3_key: str, size: int) -> dict:
+    def create_meeting(self, meeting_id: str, title: str, s3_key: str, size: int, kind: str = "meeting") -> dict:
         item = {
             "id": meeting_id,
             "title": title,
             "title_lower": title.lower(),
+            "kind": kind,
             "status": "UPLOADING",
             "s3_key": s3_key,
             "size_bytes": size,

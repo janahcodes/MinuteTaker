@@ -138,3 +138,56 @@ def test_stats_reports_queue_depth(env):
     upload(client)
     upload(client)
     assert client.get("/api/stats").json()["queue"]["waiting"] == 2
+
+
+def test_kind_is_stored_and_validated(env):
+    client, _ = env
+    r = upload(client, title="Intro to CAP theorem")
+    assert r.json()["kind"] == "meeting"
+    r = client.post("/api/meetings", data={"title": "Lecture 3", "kind": "lecture"},
+                    files={"file": ("l.wav", io.BytesIO(b"RIFFx"), "audio/wav")})
+    assert r.status_code == 201 and r.json()["kind"] == "lecture"
+    assert {m["kind"] for m in client.get("/api/meetings").json()["meetings"]} == {"meeting", "lecture"}
+    bad = client.post("/api/meetings", data={"kind": "podcast"},
+                      files={"file": ("l.wav", io.BytesIO(b"RIFFx"), "audio/wav")})
+    assert bad.status_code == 400
+
+
+LECTURE = [
+    (0, "Okay so um today we're going to talk about the CAP theorem in distributed systems."),
+    (6, "The CAP theorem says a distributed system can only guarantee two of consistency, availability and partition tolerance."),
+    (14, "Consistency means every read returns the most recent write."),
+    (20, "Availability means every request gets a response, even if it's not the latest data."),
+    (27, "Partition tolerance is the ability to keep working when the network drops messages between nodes."),
+    (35, "You know, in practice network partitions always happen, so the real choice is consistency versus availability."),
+    (44, "DynamoDB chooses availability by default and offers strongly consistent reads as an option."),
+    (52, "Basically, a bank ledger would rather refuse a request than show the wrong balance, so it picks consistency."),
+    (60, "Uh, a shopping cart picks availability because a slightly stale cart is fine."),
+]
+
+
+def test_notes_for_lecture(env):
+    client, _ = env
+    mid = client.post("/api/meetings", data={"title": "CAP theorem", "kind": "lecture"},
+                      files={"file": ("l.wav", io.BytesIO(b"RIFFx"), "audio/wav")}).json()["id"]
+    assert client.get(f"/api/meetings/{mid}/notes").status_code == 409  # not transcribed yet
+
+    from app import main
+    segs = [{"start": t, "end": t + 5, "text": x} for t, x in LECTURE]
+    main.get_store().table.update_item(
+        Key={"id": mid},
+        UpdateExpression="SET #s = :d, transcript = :t, #seg = :g, duration_s = :du",
+        ExpressionAttributeNames={"#s": "status", "#seg": "segments"},
+        ExpressionAttributeValues={":d": "DONE", ":t": " ".join(x for _, x in LECTURE), ":g": [
+            {"start": str(s["start"]), "end": str(s["end"]), "text": s["text"]} for s in segs], ":du": 66},
+    )
+    # DynamoDB stores numbers as Decimal; strings above mimic that loosely for moto
+    notes = client.get(f"/api/meetings/{mid}/notes").json()
+    terms = {d["term"].lower() for d in notes["definitions"]}
+    assert {"consistency", "availability", "partition tolerance"} <= terms
+    assert any("cap theorem" in t or "availability" in t for t in notes["key_terms"])
+    all_points = [p["text"] for s in notes["sections"] for p in s["points"]] + notes["summary"]
+    assert all_points
+    for text in all_points:  # filler removed
+        assert not text.lower().startswith(("okay", "um", "uh", "basically", "you know"))
+    assert notes["stats"]["kept"] < notes["stats"]["sentences"]  # condensed, not verbatim

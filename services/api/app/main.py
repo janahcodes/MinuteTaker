@@ -17,6 +17,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
 
+from .notes import make_notes
 from .store import Settings, Store
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -75,6 +76,7 @@ def readyz(store: Store = Depends(get_store)):
 @app.post("/api/meetings", status_code=201)
 def create_meeting(
     title: str = Form("", max_length=200),
+    kind: str = Form("meeting"),
     file: UploadFile = File(...),
     store: Store = Depends(get_store),
 ):
@@ -90,6 +92,8 @@ def create_meeting(
     if size > MAX_UPLOAD_BYTES:
         raise HTTPException(413, f"File is larger than {MAX_UPLOAD_BYTES // (1024 * 1024)} MB.")
 
+    if kind not in {"meeting", "lecture"}:
+        raise HTTPException(400, "kind must be 'meeting' or 'lecture'.")
     meeting_id = uuid.uuid4().hex[:12]
     title = title.strip() or _default_title(file.filename)
     key = f"uploads/{meeting_id}/{_safe_name(file.filename)}"
@@ -99,7 +103,7 @@ def create_meeting(
     # 2. store the audio, 3. mark UPLOADED, 4. queue the job, 5. mark QUEUED.
     # If step 4 fails the meeting stays UPLOADED and can be re-queued with
     # POST /api/meetings/{id}/retry.
-    meeting = store.create_meeting(meeting_id, title, key, size)
+    meeting = store.create_meeting(meeting_id, title, key, size, kind)
     store.upload_audio(key, file.file, content_type)
     store.set_status(meeting_id, "UPLOADED")
     store.enqueue(meeting_id)
@@ -134,6 +138,17 @@ def delete_meeting(meeting_id: str, store: Store = Depends(get_store)):
     store.delete_meeting(_require(store, meeting_id))
 
 
+@app.get("/api/meetings/{meeting_id}/notes")
+def lecture_notes(meeting_id: str, store: Store = Depends(get_store)):
+    """Condensed study notes built from the transcript (see notes.py)."""
+    m = _require(store, meeting_id)
+    if m.get("status") != "DONE":
+        raise HTTPException(409, "Notes are available once the transcript is ready.")
+    segments = [{"start": float(s["start"]), "end": float(s["end"]), "text": s["text"]} for s in m.get("segments", [])]
+    duration = float(m["duration_s"]) if m.get("duration_s") is not None else None
+    return make_notes(m.get("title", ""), segments, m.get("transcript", ""), duration)
+
+
 @app.get("/api/search")
 def search(q: str, store: Store = Depends(get_store)):
     q = q.strip()
@@ -161,6 +176,7 @@ def _public(m: dict, full: bool = False) -> dict:
     out = {
         "id": m["id"],
         "title": m.get("title", ""),
+        "kind": m.get("kind", "meeting"),
         "status": m.get("status"),
         "created_at": _num(m.get("created_at")),
         "duration_s": _num(m.get("duration_s")),
