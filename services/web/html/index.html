@@ -275,6 +275,47 @@ mark { background: var(--hl); color: inherit; border-radius: 4px; padding: 0 2px
   .tabs { margin-left: 20px; }
   .toolbar { padding: 14px 20px 20px; }
 }
+
+/* ---------- search dropdown (results right under the search bar) ---------- */
+.search { z-index: 20; }
+.results { position: absolute; right: 0; top: calc(100% + 10px); width: min(520px, 92vw); max-height: 70vh; overflow: auto;
+  border-radius: 24px; padding: 8px; display: none; background: rgba(250, 252, 255, .96) !important;
+  box-shadow: 0 24px 60px rgba(20,32,56,.25) !important; }
+@media (prefers-color-scheme: dark) { .results { background: rgba(18, 26, 43, .97) !important; } }
+.results.open { display: block; }
+.results .rh { display: flex; justify-content: space-between; padding: 8px 12px 6px; font-size: 11px; font-weight: 700;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.results .r { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 10px 12px; border-radius: 16px; cursor: pointer; }
+.results .r:hover, .results .r:focus { background: rgba(255,255,255,.55); outline: none; }
+@media (prefers-color-scheme: dark) { .results .r:hover, .results .r:focus { background: rgba(255,255,255,.06); } }
+.results .r b { display: block; font-weight: 600; margin-bottom: 2px; }
+.results .r span { font-size: 12.5px; color: var(--ink-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.results .none { padding: 18px 12px; color: var(--muted); text-align: center; }
+
+/* ---------- meeting / lecture switch ---------- */
+.kind { display: inline-flex; gap: 4px; padding: 4px; border-radius: 99px; background: rgba(255,255,255,.08); border: 1px solid rgba(169,200,255,.3); width: fit-content; }
+.kind label { cursor: pointer; }
+.kind input { position: absolute; opacity: 0; pointer-events: none; }
+.kind span { display: inline-block; padding: 6px 16px; border-radius: 99px; font-size: 13px; font-weight: 600; color: rgba(232,240,255,.75); transition: background .2s, color .2s; }
+.kind input:checked + span { background: #a9c8ff; color: #142038; }
+.kind input:focus-visible + span { outline: 2px solid #fff; }
+.kind-tag { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; padding: 1px 8px; border-radius: 99px;
+  background: rgba(169,200,255,.35); color: var(--ink-2); }
+
+/* ---------- calendar + notes ---------- */
+.cal { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.mini { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 4px 11px; border-radius: 99px;
+  border: 1px solid var(--glass-line); background: rgba(255,255,255,.5); cursor: pointer; color: var(--ink); text-decoration: none; }
+.mini:hover { background: rgba(255,255,255,.85); }
+@media (prefers-color-scheme: dark) { .mini { background: rgba(255,255,255,.06); } .mini:hover { background: rgba(255,255,255,.12); } }
+.mini svg { width: 13px; height: 13px; }
+.tag.date { background: rgba(169,200,255,.45); color: var(--ink); }
+.notes-cta { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 16px 18px; margin-bottom: 16px; border-radius: 22px;
+  background: linear-gradient(120deg, rgba(169,200,255,.55), rgba(234,242,255,.4)); border: 1px solid var(--glass-line); }
+.notes-cta p { margin: 0; flex: 1; min-width: 200px; font-size: 13px; color: var(--ink-2); }
+.notes-cta b { display: block; font-family: var(--serif); font-weight: 400; font-size: 18px; color: var(--ink); }
+@media (prefers-color-scheme: dark) { .notes-cta { background: linear-gradient(120deg, rgba(169,200,255,.14), rgba(169,200,255,.04)); } }
+.callhint { font-size: 11.5px; color: var(--muted); max-width: 300px; }
 </style>
 </head>
 <body>
@@ -309,7 +350,9 @@ mark { background: var(--hl); color: inherit; border-radius: 4px; padding: 0 2px
     </nav>
     <form class="search" id="search-form" role="search">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      <input id="q" type="search" placeholder="Search every transcript" aria-label="Search transcripts">
+      <input id="q" type="search" placeholder="Search every transcript" aria-label="Search transcripts" autocomplete="off"
+        aria-controls="results" aria-expanded="false">
+      <div class="results glass" id="results" role="listbox" aria-label="Search results"></div>
     </form>
     <span class="status-pill" title="Kubernetes pod that answered and SQS queue depth"><span class="dot" id="health-dot"></span>System online</span>
   </header>
@@ -319,7 +362,11 @@ mark { background: var(--hl); color: inherit; border-radius: 4px; padding: 0 2px
       <span class="eyebrow">Meeting intelligence</span>
       <h1>Meetings in.<br><em>Minutes</em> out.</h1>
       <p>Upload a call or record one here. You'll get a searchable transcript and every action item, with who owns it and when it's due.</p>
-      <input id="title" type="text" placeholder="Name this meeting (optional)" maxlength="200">
+      <div class="kind" role="radiogroup" aria-label="Recording type">
+        <label><input type="radio" name="kind" value="meeting" checked><span>Meeting</span></label>
+        <label><input type="radio" name="kind" value="lecture"><span>Lecture</span></label>
+      </div>
+      <input id="title" type="text" placeholder="Name this recording (optional)" maxlength="200">
       <div class="msg" id="upload-msg" role="status"></div>
     </div>
 
@@ -331,9 +378,11 @@ mark { background: var(--hl); color: inherit; border-radius: 4px; padding: 0 2px
       <small>Drop a recording anywhere on this card<br>mp3 · m4a · wav · webm · ogg</small>
       <div class="row">
         <span class="btn dark" id="choose">Choose file</span>
-        <button class="btn rec" id="rec" type="button"><span class="wave"><i></i><i></i><i></i><i></i></span><span id="rec-label">● Record</span></button>
+        <button class="btn rec" id="rec" type="button"><span class="wave"><i></i><i></i><i></i><i></i></span><span id="rec-label">● Record mic</span></button>
+        <button class="btn rec" id="rec-call" type="button" title="Record a Zoom, Google Meet or Teams call running in a browser tab"><span class="wave"><i></i><i></i><i></i><i></i></span><span id="call-label">◉ Record a call</span></button>
       </div>
       <span class="fine">Up to 50 MB · 45 minutes</span>
+      <span class="callhint">“Record a call” captures a Meet, Teams or Zoom-web tab plus your mic. Tick “Share tab audio” when Chrome asks.</span>
     </label>
   </section>
 
