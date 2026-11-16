@@ -10,6 +10,9 @@ spec:
   template:
     metadata: { labels: { app: moto } }
     spec:
+      # Without this, k8s injects MOTO_PORT=tcp://<ip>:5000 (from the Service
+      # named "moto"), which moto reads as its own port setting and crashes.
+      enableServiceLinks: false
       containers:
         - name: moto
           image: motoserver/moto:5.0.26

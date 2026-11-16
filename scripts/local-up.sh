@@ -8,7 +8,7 @@ cd "$(dirname "$0")/.."
 CLUSTER=minutetaker
 METRICS_SERVER_VERSION=v0.7.2
 
-docker compose build api worker web
+docker compose build api worker web || true   # images may already be built
 
 if ! kind get clusters | grep -qx "$CLUSTER"; then
   kind create cluster --config k8s/overlays/local/kind-cluster.yaml
