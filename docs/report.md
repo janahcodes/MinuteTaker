@@ -6,7 +6,7 @@
 MinuteTaker turns meeting recordings into searchable minutes. A user uploads a
 recording (or records one in the browser) and a few seconds later gets a
 timestamped transcript and a list of **action items** with the owner and due
-date when one was said ("Sarah, can you send the proposal *by Friday*?").
+date if there's any.
 Every transcript is full-text searchable.
 
 The target users are small teams that record calls but never write minutes,
@@ -33,9 +33,8 @@ Features:
   microphone. It is transcribed when the call ends. A bot that joins meetings by
   itself would need each platform's meeting SDK and app approval, so it is
   out of scope.
-* **Search as you type.** Results drop down directly under the search bar,
-  and opening one highlights the match in the transcript.
-
+  
+  
 ## 2. Architecture
 
 ```
@@ -112,12 +111,11 @@ All of this is in `k8s/base`, with environment differences in overlays
 | worker | `/healthz` up to 120 s (model load) | `/healthz`: the poll loop has ticked in the last `STALL_AFTER_S` (300 s) | `/readyz`: model loaded **and** loop alive |
 
 The split between liveness and readiness is deliberate. If DynamoDB has an
-outage, every API pod fails *readiness*. It is taken out of the Service so it
-stops receiving traffic, but it is **not restarted**. Restarting cannot fix
+outage, every API pod fails readiness. It is taken out of the Service so it
+stops receiving traffic, but it is not restarted. Restarting cannot fix
 a downstream outage and would only add a restart storm on top of it. The
 worker's liveness probe catches the failure a process check would miss: a
-worker that is running but stuck (for example a hung decode) stops sending
-heartbeats and gets restarted.
+worker that is running but stuck, stops sending heartbeats and gets restarted.
 
 ### Horizontal scaling
 
@@ -141,7 +139,7 @@ voluntary disruptions such as node drains and upgrades.
 
 For each component: what can fail, how the failure shows up, what limits the
 damage, and what the user sees. "Tested" marks failures that were injected on
-the running system (§6).
+the running system.
 
 ### 5.1 web (nginx)
 
@@ -255,9 +253,9 @@ I uploaded a 111-second recording, waited until a worker had claimed it, and
 force-deleted that pod (`kubectl delete pod --grace-period=0 --force`, which
 behaves like a crash).
 
-* The job was **not lost**. The dead pod never deleted the SQS message, so the
+* The job was not lost. The dead pod never deleted the SQS message, so the
   message became visible again when the 120 s visibility timeout ran out.
-* A **different** worker picked it up and finished it (`attempts = 2`). The
+* A different worker picked it up and finished it (`attempts = 2`). The
   meeting went `PROCESSING → DONE` with no manual step.
 * The cost was latency: about 3 min 45 s end-to-end instead of about 1 min 50 s.
   A shorter visibility timeout would recover faster, but would risk duplicate
@@ -270,8 +268,8 @@ API. The API returns `503` with a friendly message, `/readyz` fails, and
 restarting it. `test_run_loop_survives_unreachable_aws` checks that the worker
 backs off instead of crashing when AWS cannot be reached.
 
-### 6.5 What did not work the first time (found by running it)
-These were all real bugs, found by deploying and testing, and fixed:
+### 6.5 What did not work the first time 
+These were all the bugs, found by deploying and testing, and fixed:
 
 1. **`segments` is a DynamoDB reserved word.** Saving results failed until I
    aliased it with `ExpressionAttributeNames` (caught by a unit test).
@@ -288,7 +286,7 @@ These were all real bugs, found by deploying and testing, and fixed:
 5. **Dependency drift broke transcription.** `faster-whisper` calls
    `av.open(metadata_errors=…)`, which PyAV 19 removed, so every file failed
    with "Could not decode audio". I pinned `av==18.1.0`. The worker classed this as a
-   *permanent* error (bad input), which was the wrong call: it was a code bug,
+   permanent error (bad input), which was the wrong call: it was a code bug,
    and those jobs had to be retried by hand once the fix was deployed. A
    stricter split between "the file is bad" and "our decoder is broken" would
    be better.
@@ -296,12 +294,12 @@ These were all real bugs, found by deploying and testing, and fixed:
    no longer installs. I pinned it explicitly.
 7. **A real cascading failure in the API tier.** Redeploying all three services
    at once while a worker was transcribing pushed the cluster to ~250 % CPU.
-   Each API pod ran **two uvicorn processes under a 0.5 CPU limit**. When the
+   Each API pod ran two uvicorn processes under a 0.5 CPU limit. When the
    pods were slow, uvicorn's supervisor killed and restarted its own child
    processes, and the 1 s default liveness timeout made the kubelet restart
    whole pods. Restarting Python is CPU-heavy, so the pods never caught up.
    Meanwhile the HPA read the high CPU as load and scaled the API to its max
-   of 6, adding even more startup work. **0 of 6 API pods were Ready** and the
+   of 6, adding even more startup work. 0 of 6 API pods were Ready and the
    site returned errors until I fixed it:
    * one uvicorn process per pod (Kubernetes already does the scaling);
    * a 5 s timeout on the liveness probes.
@@ -312,7 +310,7 @@ These were all real bugs, found by deploying and testing, and fixed:
    process, or it turns overload into an outage; (c) CPU-based autoscaling
    can amplify a startup storm, which is another reason to scale on queue depth
    or request rate (§7).
-8. **`kind load` can fail silently under load.** After a fix, the workers
+8. `kind load` can fail silently under load. After a fix, the workers
    kept running the old image because loading the image into the nodes had
    failed while the cluster was saturated. I only caught it because the output
    didn't change, and confirmed it by comparing image IDs on the nodes. The fix
@@ -357,7 +355,12 @@ kubectl -n minutetaker get hpa,pods -w
 * **Node autoscaling** (Cluster Autoscaler / Karpenter) so the HPA's extra pods
   always have room.
 
-## 8. Use of AI tools (disclosure required by the course policy)
+## 8. Use of AI tools
 
-*To be completed by the student:* describe which parts were AI-assisted and
-confirm you can explain every file.
+Use of AI tools: I used Claude as an AI pair-programmer throughout this project.
+
+What the AI did: brainstormed application ideas and proposed the architecture (three services, SQS queue, DynamoDB/S3, Kubernetes with probes and HPAs). It wrote most of the code, tests, Dockerfiles, Kubernetes manifests and Terraform. It ran the builds, deployments, load tests and failure-injection tests, diagnosed the bugs listed in §6.5, and drafted this report.
+
+What I did: chose a client-facing product direction and the final concept, and directed the design. I defined the features beyond the base build: calendar reminders for deadlines, lecture mode with downloadable notes, search results under the search bar, and recording calls. I tested the application and reported problems (for example the failed upload that exposed the emulator out-of-memory crash), set up the GitHub repository, pushed the code and published the container images.
+
+I reviewed the code and the report, and I can explain how each part works and why it was designed that way.
