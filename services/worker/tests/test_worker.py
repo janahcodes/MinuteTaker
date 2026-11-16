@@ -183,3 +183,32 @@ def test_sentences_spanning_segments():
     items = extract_action_items(segs)
     assert items[0]["text"] == "Let's make sure the contract is signed by end of week."
     assert items[0]["start"] == 0
+
+
+def test_run_loop_survives_unreachable_aws(monkeypatch):
+    """Connection errors (BotoCoreError, not ClientError) must not kill the worker."""
+    from botocore.exceptions import EndpointConnectionError
+
+    with mock_aws():
+        os.environ["QUEUE_URL"] = "https://sqs.us-east-1.amazonaws.com/123456789012/jobs"
+        w = Worker(FakeTranscriber())
+        calls = {"n": 0}
+
+        def boom(*a, **k):
+            calls["n"] += 1
+            if calls["n"] >= 2:
+                w.stopping.set()
+            raise EndpointConnectionError(endpoint_url="http://moto:5000")
+
+        monkeypatch.setattr(w, "poll_once", boom)
+        monkeypatch.setattr(w.stopping, "wait", lambda t: None)
+        w.run()  # returns instead of raising
+        assert calls["n"] == 2
+
+
+def test_named_owner_with_will():
+    segs = [{"start": 3, "end": 6, "text": "Mike will set up the staging environment tomorrow."},
+            {"start": 6, "end": 8, "text": "It will probably rain later."}]
+    items = extract_action_items(segs)
+    assert len(items) == 1
+    assert items[0]["owner"] == "Mike" and items[0]["due"].lower() == "tomorrow"

@@ -41,7 +41,8 @@ _OWNER = re.compile(
     r"^(?:ok(?:ay)?|so|and|alright|right)?[,\s]*([A-Z][a-z]+)(?:,|\s+(?:will|can|could|is going to|needs to|should)\b)"
 )
 _NOT_NAMES = {"I", "We", "You", "Let", "Lets", "Can", "Could", "Would", "Will", "Please",
-              "The", "This", "That", "And", "So", "Okay", "Ok", "Alright", "Right", "Make", "Next"}
+              "The", "This", "That", "And", "So", "Okay", "Ok", "Alright", "Right", "Make", "Next",
+              "It", "He", "She", "They", "There", "Who", "What", "Someone", "Everyone", "Nobody"}
 
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
 # Filler questions that match the patterns but aren't tasks.
@@ -73,7 +74,10 @@ def extract_action_items(segments: list[dict], limit: int = 25) -> list[dict]:
     for start, sentence in split_sentences(segments):
         if len(sentence.split()) < 4 or _IGNORE.search(sentence):
             continue
-        if not _COMMITMENT.search(sentence):
+        named = _OWNER.match(sentence)
+        named = named if named and named.group(1) not in _NOT_NAMES else None
+        # "Mike will set up…" has no commitment phrase but names an owner.
+        if not (_COMMITMENT.search(sentence) or named):
             continue
         key = sentence.lower()
         if key in seen:
@@ -82,9 +86,8 @@ def extract_action_items(segments: list[dict], limit: int = 25) -> list[dict]:
 
         due = _DUE.search(sentence)
         owner = None
-        m = _OWNER.match(sentence)
-        if m and m.group(1) not in _NOT_NAMES:
-            owner = m.group(1)
+        if named:
+            owner = named.group(1)
         elif re.match(r"^(?:\w+[.,]\s*)?(i['’]ll|i will|i['’]m going to|i can take)\b", sentence, re.IGNORECASE):
             owner = "Speaker"
 
