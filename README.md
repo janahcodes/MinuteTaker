@@ -14,7 +14,10 @@ DynamoDB holds meetings, S3 holds the audio and SQS queues the jobs.
 | `api` | FastAPI: uploads, listing, search | CPU, 2–6 pods |
 | `worker` | Whisper speech-to-text + action-item extraction, fed by SQS | CPU, 1–5 pods |
 
-**Images (GHCR):** `ghcr.io/janahcodes/minutetaker-api:v1` · `ghcr.io/janahcodes/minutetaker-worker:v1` · `ghcr.io/janahcodes/minutetaker-web:v1`
+**Images:** public on GHCR (`ghcr.io/janahcodes/minutetaker-{api,worker,web}:v1`) and in Amazon ECR
+(`439093223948.dkr.ecr.us-east-2.amazonaws.com/minutetaker-{api,worker,web}`).
+
+**Managed data services:** DynamoDB, S3 and SQS in AWS `us-east-2`, created by `infra/` (Terraform).
 
 **Report, including the failure-mode analysis:** [docs/report.md](docs/report.md)
 
@@ -46,6 +49,13 @@ scripts/loadtest.sh 20     # pile up jobs, then:
 kubectl -n minutetaker get hpa,pods -w
 scripts/local-down.sh
 ```
+
+## Use the real AWS services
+```bash
+terraform -chdir=infra apply      # DynamoDB, S3, SQS, ECR, IAM in us-east-2
+scripts/use-real-aws.sh            # point the cluster at them
+```
+Tear down with `terraform -chdir=infra destroy`.
 
 ## Run it without Kubernetes
 ```bash

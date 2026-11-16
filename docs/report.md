@@ -210,8 +210,9 @@ that has side effects.
 
 All results below come from the system running on a local 3-node Kubernetes
 cluster (kind: 1 control plane + 2 workers, on an Apple-silicon Mac).
-DynamoDB, S3 and SQS were emulated with moto, because my AWS account was blocked
-(see §6.6).
+The scaling and failure-injection runs (§6.2–6.3) used moto to emulate
+DynamoDB, S3 and SQS. The final deployment uses the **real managed services in
+AWS us-east-2**, created with Terraform (§6.6).
 
 ### 6.1 End-to-end transcription
 A 25.7-second test recording of a staged stand-up meeting was transcribed in
@@ -317,15 +318,34 @@ These were all the bugs, found by deploying and testing, and fixed:
    is to tag every build uniquely (a git SHA) instead of reusing `:dev`, so a
    stale image can't pass for a new one. Project 3's pipeline should do this.
 
-### 6.6 Deployment target and the AWS block
-The plan was AWS EKS with images in ECR and real DynamoDB, S3 and SQS.
-When I started, a Service Control Policy on my AWS Organization denied EKS,
-ECS, ECR, DynamoDB, SQS, EC2 and IAM in the member account, while S3 was allowed.
-`infra/` contains Terraform for the managed data services, the ECR
-repositories and a least-privilege IAM identity, validated with
-`terraform validate`. It is ready to apply once the policy allows those
-services. The application code needs no changes for that: only the overlay's
-configuration (endpoint, names, credentials) changes.
+### 6.6 Managed services on AWS, and the "blocked account" that wasn't
+At first every AWS call except S3 failed with *"explicit deny in a service
+control policy"*, so the system was built and tested against moto. The real
+cause was that my AWS project (created through AWS's newer "projects" console)
+is **restricted to one region, US East (Ohio) `us-east-2`**, and my CLI and
+Terraform defaulted to `us-east-1`. A second mistake hid this for a while: my
+permission-check loop ran in zsh, which doesn't word-split `$var`, so every
+looped call was malformed and failed regardless of permissions. Lesson: check
+the account's allowed regions first, and verify a diagnostic before trusting it.
+
+With the region fixed, `terraform apply` created 16 resources in under a
+minute: the DynamoDB table (on-demand, encrypted, point-in-time recovery), the
+S3 bucket (private, encrypted, 30-day expiry), the SQS queue and dead-letter
+queue, three ECR repositories (immutable tags, scan on push), and a
+least-privilege IAM user scoped to exactly those three data resources.
+`scripts/use-real-aws.sh` switches the cluster from moto to these via the
+`k8s/overlays/aws` overlay; **no application code changed**, only configuration.
+
+Verified end to end: an upload through the UI was written to DynamoDB, its
+audio stored in S3, the job carried by SQS, transcribed in 5.5 s, and the queue
+drained, all checked directly with the AWS CLI. Images are in **ECR**
+(`439093223948.dkr.ecr.us-east-2.amazonaws.com/minutetaker-{api,web,worker}`,
+tagged with the git commit) and also public on **GHCR**.
+
+The orchestrator is still a local kind cluster rather than EKS. EKS would
+add about $0.10/hour for the control plane plus nodes. Moving to it is a change
+of overlay (image names from ECR, EKS Pod Identity instead of the IAM user's
+key) and is planned for Project 3, which must rebuild the environment from code.
 
 ### 6.7 How to reproduce
 ```bash
