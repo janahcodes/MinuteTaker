@@ -14,6 +14,8 @@ DynamoDB holds meetings, S3 holds the audio and SQS queues the jobs.
 | `api` | FastAPI: uploads, listing, search | CPU, 2–6 pods |
 | `worker` | Whisper speech-to-text + action-item extraction, fed by SQS | CPU, 1–5 pods |
 
+**Images (GHCR):** `ghcr.io/janahcodes/minutetaker-api:v1` · `ghcr.io/janahcodes/minutetaker-worker:v1` · `ghcr.io/janahcodes/minutetaker-web:v1`
+
 **Report, including the failure-mode analysis:** [docs/report.md](docs/report.md)
 
 ## Layout
